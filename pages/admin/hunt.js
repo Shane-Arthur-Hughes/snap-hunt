@@ -1,0 +1,261 @@
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/router'
+import Link from 'next/link'
+import { supabase } from '../../lib/supabase'
+
+function useAdminGuard(router) {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session || session.user.is_anonymous) {
+        router.replace('/admin')
+      } else {
+        setReady(true)
+      }
+    })
+  }, [router])
+  return ready
+}
+
+export default function AdminHunt() {
+  const router = useRouter()
+  const { id: huntId } = router.query
+  const ready = useAdminGuard(router)
+
+  const [hunt, setHunt] = useState(null)
+  const [items, setItems] = useState([])
+  const [newTitle, setNewTitle] = useState('')
+  const [newDesc, setNewDesc] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDesc, setEditDesc] = useState('')
+
+  useEffect(() => {
+    if (!ready || !huntId) return
+    loadData()
+  }, [ready, huntId])
+
+  async function loadData() {
+    const { data: huntData } = await supabase
+      .from('hunts')
+      .select('*')
+      .eq('id', huntId)
+      .single()
+    setHunt(huntData)
+
+    const { data: itemsData } = await supabase
+      .from('items')
+      .select('*, submissions(count)')
+      .eq('hunt_id', huntId)
+      .order('sort_order', { ascending: true })
+    setItems(itemsData || [])
+  }
+
+  async function handleAdd(e) {
+    e.preventDefault()
+    if (!newTitle.trim()) return
+    setAdding(true)
+    const nextOrder = items.length > 0 ? Math.max(...items.map(i => i.sort_order)) + 1 : 0
+    await supabase.from('items').insert({
+      hunt_id: huntId,
+      title: newTitle.trim(),
+      description: newDesc.trim() || null,
+      sort_order: nextOrder,
+    })
+    setNewTitle('')
+    setNewDesc('')
+    setAdding(false)
+    loadData()
+  }
+
+  async function handleDelete(itemId) {
+    if (!confirm('Delete this item and all its submissions?')) return
+    await supabase.from('items').delete().eq('id', itemId)
+    loadData()
+  }
+
+  async function handleMoveUp(index) {
+    if (index === 0) return
+    const a = items[index]
+    const b = items[index - 1]
+    await Promise.all([
+      supabase.from('items').update({ sort_order: b.sort_order }).eq('id', a.id),
+      supabase.from('items').update({ sort_order: a.sort_order }).eq('id', b.id),
+    ])
+    loadData()
+  }
+
+  async function handleMoveDown(index) {
+    if (index === items.length - 1) return
+    const a = items[index]
+    const b = items[index + 1]
+    await Promise.all([
+      supabase.from('items').update({ sort_order: b.sort_order }).eq('id', a.id),
+      supabase.from('items').update({ sort_order: a.sort_order }).eq('id', b.id),
+    ])
+    loadData()
+  }
+
+  function startEdit(item) {
+    setEditing(item.id)
+    setEditTitle(item.title)
+    setEditDesc(item.description || '')
+  }
+
+  async function handleSaveEdit(itemId) {
+    await supabase.from('items').update({
+      title: editTitle.trim(),
+      description: editDesc.trim() || null,
+    }).eq('id', itemId)
+    setEditing(null)
+    loadData()
+  }
+
+  if (!ready) return null
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-indigo-600 text-white shadow-md">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+          <Link href="/admin/dashboard" className="text-indigo-200 hover:text-white text-sm">
+            &larr; Dashboard
+          </Link>
+          <span className="font-bold text-xl flex-1">Snap Hunt</span>
+        </div>
+      </header>
+
+      <main className="max-w-3xl mx-auto px-4 py-6">
+        {hunt && (
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">{hunt.name}</h1>
+            <div className="flex gap-3 mt-2">
+              <Link href={`/hunt?id=${huntId}`} target="_blank" className="text-sm text-indigo-600 hover:underline">
+                View hunt page
+              </Link>
+              <Link href={`/results?hunt=${huntId}`} target="_blank" className="text-sm text-indigo-600 hover:underline">
+                View results
+              </Link>
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={handleAdd} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+          <h2 className="font-semibold text-gray-800 mb-3">Add Item</h2>
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={newTitle}
+              onChange={e => setNewTitle(e.target.value)}
+              placeholder="Item title (e.g. A red door)"
+              required
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <input
+              type="text"
+              value={newDesc}
+              onChange={e => setNewDesc(e.target.value)}
+              placeholder="Hint or description (optional)"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <button
+              type="submit"
+              disabled={adding}
+              className="bg-indigo-600 text-white font-semibold px-5 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-sm transition-colors"
+            >
+              {adding ? 'Adding...' : 'Add Item'}
+            </button>
+          </div>
+        </form>
+
+        <h2 className="font-semibold text-gray-800 mb-3">
+          Items ({items.length})
+        </h2>
+
+        {items.length === 0 && (
+          <div className="text-center text-gray-400 py-8">No items yet. Add the first one above.</div>
+        )}
+
+        <div className="space-y-2">
+          {items.map((item, index) => (
+            <div key={item.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              {editing === item.id ? (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={e => setEditTitle(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <input
+                    type="text"
+                    value={editDesc}
+                    onChange={e => setEditDesc(e.target.value)}
+                    placeholder="Hint or description (optional)"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleSaveEdit(item.id)}
+                      className="text-xs bg-indigo-600 text-white font-semibold px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditing(null)}
+                      className="text-xs bg-gray-100 text-gray-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start gap-3">
+                  <div className="flex flex-col gap-1">
+                    <button
+                      onClick={() => handleMoveUp(index)}
+                      disabled={index === 0}
+                      className="text-gray-300 hover:text-gray-600 disabled:opacity-0 text-xs leading-none"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => handleMoveDown(index)}
+                      disabled={index === items.length - 1}
+                      className="text-gray-300 hover:text-gray-600 disabled:opacity-0 text-xs leading-none"
+                    >
+                      ▼
+                    </button>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900">{item.title}</p>
+                    {item.description && (
+                      <p className="text-gray-500 text-sm">{item.description}</p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {item.submissions?.[0]?.count ?? 0} submissions
+                    </p>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => startEdit(item)}
+                      className="text-xs text-indigo-600 hover:underline font-medium"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(item.id)}
+                      className="text-xs text-red-500 hover:underline font-medium"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </main>
+    </div>
+  )
+}
