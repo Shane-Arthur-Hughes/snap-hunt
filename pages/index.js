@@ -43,9 +43,12 @@ export default function Home() {
           <Link
             key={hunt.id}
             href={`/hunt?id=${hunt.id}`}
-            className="block bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md hover:border-indigo-200 transition-all"
+            className="block bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-indigo-200 transition-all overflow-hidden"
           >
-            <div className="flex items-start justify-between">
+            {hunt.icon_url && (
+              <img src={hunt.icon_url} alt={hunt.name} className="w-full h-36 object-cover" />
+            )}
+            <div className="p-5 flex items-start justify-between">
               <div className="flex-1">
                 <h2 className="text-xl font-semibold text-gray-900">{hunt.name}</h2>
                 {hunt.description && (
@@ -55,7 +58,7 @@ export default function Home() {
                   {hunt.items?.[0]?.count ?? 0} items to find
                 </p>
               </div>
-              <span className="ml-4 bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-lg">
+              <span className="ml-4 bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-lg flex-shrink-0">
                 Join
               </span>
             </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { supabase } from '../../lib/supabase'
@@ -17,6 +17,15 @@ function useAdminGuard(router) {
   return ready
 }
 
+async function uploadIcon(file, huntId) {
+  const ext = file.name.split('.').pop()
+  const path = `hunt-icons/${huntId}.${ext}`
+  const { error } = await supabase.storage.from('photos').upload(path, file, { upsert: true })
+  if (error) return null
+  const { data: { publicUrl } } = supabase.storage.from('photos').getPublicUrl(path)
+  return publicUrl
+}
+
 export default function AdminDashboard() {
   const router = useRouter()
   const ready = useAdminGuard(router)
@@ -24,8 +33,16 @@ export default function AdminDashboard() {
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [iconFile, setIconFile] = useState(null)
+  const [iconPreview, setIconPreview] = useState(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(null)
+  const [editingIcon, setEditingIcon] = useState(null)
+  const [editIconFile, setEditIconFile] = useState(null)
+  const [editIconPreview, setEditIconPreview] = useState(null)
+  const [uploadingIcon, setUploadingIcon] = useState(false)
+  const newIconRef = useRef()
+  const editIconRef = useRef()
 
   useEffect(() => {
     if (!ready) return
@@ -40,15 +57,49 @@ export default function AdminDashboard() {
     setHunts(data || [])
   }
 
+  function handleIconChange(e, setter, previewSetter) {
+    const f = e.target.files[0]
+    if (!f) return
+    setter(f)
+    previewSetter(URL.createObjectURL(f))
+  }
+
   async function handleCreate(e) {
     e.preventDefault()
     setSaving(true)
-    await supabase.from('hunts').insert({ name: name.trim(), description: description.trim() || null })
+
+    const { data: hunt } = await supabase
+      .from('hunts')
+      .insert({ name: name.trim(), description: description.trim() || null })
+      .select()
+      .single()
+
+    if (hunt && iconFile) {
+      const url = await uploadIcon(iconFile, hunt.id)
+      if (url) await supabase.from('hunts').update({ icon_url: url }).eq('id', hunt.id)
+    }
+
     setName('')
     setDescription('')
+    setIconFile(null)
+    setIconPreview(null)
     setShowForm(false)
     setSaving(false)
     loadHunts()
+  }
+
+  async function handleSaveIcon(hunt) {
+    if (!editIconFile) return
+    setUploadingIcon(true)
+    const url = await uploadIcon(editIconFile, hunt.id)
+    if (url) {
+      await supabase.from('hunts').update({ icon_url: url }).eq('id', hunt.id)
+      loadHunts()
+    }
+    setEditingIcon(null)
+    setEditIconFile(null)
+    setEditIconPreview(null)
+    setUploadingIcon(false)
   }
 
   async function handleToggleActive(hunt) {
@@ -120,6 +171,36 @@ export default function AdminDashboard() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Icon (optional)</label>
+              <input
+                ref={newIconRef}
+                type="file"
+                accept="image/*"
+                onChange={e => handleIconChange(e, setIconFile, setIconPreview)}
+                className="hidden"
+              />
+              {iconPreview ? (
+                <div className="flex items-center gap-3">
+                  <img src={iconPreview} className="w-16 h-16 rounded-xl object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => { setIconFile(null); setIconPreview(null) }}
+                    className="text-xs text-red-500 hover:underline"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => newIconRef.current.click()}
+                  className="border-2 border-dashed border-gray-300 rounded-xl w-16 h-16 flex items-center justify-center text-gray-400 hover:border-indigo-400 hover:text-indigo-400 transition-colors text-2xl"
+                >
+                  +
+                </button>
+              )}
+            </div>
             <button
               type="submit"
               disabled={saving}
@@ -137,7 +218,56 @@ export default function AdminDashboard() {
         <div className="space-y-3">
           {hunts.map(hunt => (
             <div key={hunt.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  {editingIcon === hunt.id ? (
+                    <div className="space-y-1">
+                      <input
+                        ref={editIconRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={e => handleIconChange(e, setEditIconFile, setEditIconPreview)}
+                        className="hidden"
+                      />
+                      <div
+                        onClick={() => editIconRef.current.click()}
+                        className="w-14 h-14 rounded-xl overflow-hidden cursor-pointer border-2 border-dashed border-indigo-400 flex items-center justify-center bg-indigo-50"
+                      >
+                        {editIconPreview
+                          ? <img src={editIconPreview} className="w-full h-full object-cover" />
+                          : <span className="text-indigo-400 text-xl">+</span>
+                        }
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => handleSaveIcon(hunt)}
+                          disabled={!editIconFile || uploadingIcon}
+                          className="text-xs text-indigo-600 font-semibold hover:underline disabled:opacity-40"
+                        >
+                          {uploadingIcon ? '...' : 'Save'}
+                        </button>
+                        <span className="text-gray-300 text-xs">·</span>
+                        <button
+                          onClick={() => { setEditingIcon(null); setEditIconFile(null); setEditIconPreview(null) }}
+                          className="text-xs text-gray-400 hover:underline"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setEditingIcon(hunt.id)} className="group relative w-14 h-14 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0">
+                      {hunt.icon_url
+                        ? <img src={hunt.icon_url} className="w-full h-full object-cover" />
+                        : <span className="text-gray-300 text-2xl">📷</span>
+                      }
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span className="text-white text-xs font-semibold">Edit</span>
+                      </div>
+                    </button>
+                  )}
+                </div>
+
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <h2 className="font-semibold text-gray-900 truncate">{hunt.name}</h2>
