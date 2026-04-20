@@ -178,14 +178,22 @@ function TeamRegistration({ hunt, onRegistered }) {
   )
 }
 
-function ItemCard({ item, teamId, submissions, onSubmitted }) {
+function ItemCard({ item, teamId, submissions, onSubmitted, onRemoved }) {
   const [expanded, setExpanded] = useState(false)
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
   const [caption, setCaption] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [removing, setRemoving] = useState(null)
   const [error, setError] = useState('')
   const inputRef = useRef()
+
+  async function handleRemove(sub) {
+    setRemoving(sub.id)
+    await supabase.from('submissions').delete().eq('id', sub.id)
+    onRemoved(item.id, sub.id)
+    setRemoving(null)
+  }
 
   const required = item.photo_count ?? 1
   const submittedCount = submissions.length
@@ -229,7 +237,15 @@ function ItemCard({ item, teamId, submissions, onSubmitted }) {
       return
     }
 
-    onSubmitted(item.id, { url: publicUrl, caption: caption.trim() || null })
+    const { data: inserted } = await supabase
+      .from('submissions')
+      .select('id')
+      .eq('item_id', item.id)
+      .eq('team_id', teamId)
+      .eq('photo_url', publicUrl)
+      .single()
+
+    onSubmitted(item.id, { id: inserted?.id, url: publicUrl, caption: caption.trim() || null })
     setFile(null)
     setPreview(null)
     setCaption('')
@@ -272,14 +288,21 @@ function ItemCard({ item, teamId, submissions, onSubmitted }) {
       {expanded && (
         <div className="border-t border-gray-100 p-4 space-y-3">
           {submissions.length > 0 && (
-            <div className={submissions.length > 1 ? 'grid grid-cols-2 gap-2' : 'space-y-2'}>
+            <div className="space-y-3">
               {submissions.map((sub, i) => (
-                <div key={i}>
+                <div key={sub.id ?? i} className="relative">
                   <img
                     src={sub.url}
                     alt={`Photo ${i + 1}`}
                     className="w-full rounded-lg object-cover max-h-64"
                   />
+                  <button
+                    onClick={() => handleRemove(sub)}
+                    disabled={removing === sub.id}
+                    className="absolute top-2 right-2 bg-black/50 hover:bg-red-600 text-white text-xs font-semibold px-2 py-1 rounded-full transition-colors disabled:opacity-50"
+                  >
+                    {removing === sub.id ? '...' : 'Remove'}
+                  </button>
                   {sub.caption && (
                     <p className="text-xs text-gray-500 mt-1 px-0.5">{sub.caption}</p>
                   )}
@@ -386,7 +409,7 @@ export default function HuntPage() {
     const itemIds = itemList.map(i => i.id)
     const { data } = await supabase
       .from('submissions')
-      .select('item_id, photo_url, caption')
+      .select('id, item_id, photo_url, caption')
       .eq('team_id', teamId)
       .in('item_id', itemIds)
       .order('created_at', { ascending: true })
@@ -394,7 +417,7 @@ export default function HuntPage() {
     const map = {}
     for (const s of data || []) {
       if (!map[s.item_id]) map[s.item_id] = []
-      map[s.item_id].push({ url: s.photo_url, caption: s.caption })
+      map[s.item_id].push({ id: s.id, url: s.photo_url, caption: s.caption })
     }
     setSubmissions(map)
   }
@@ -407,6 +430,13 @@ export default function HuntPage() {
     setSubmissions(prev => ({
       ...prev,
       [itemId]: [...(prev[itemId] || []), photo],
+    }))
+  }
+
+  function handleRemoved(itemId, submissionId) {
+    setSubmissions(prev => ({
+      ...prev,
+      [itemId]: (prev[itemId] || []).filter(s => s.id !== submissionId),
     }))
   }
 
@@ -466,6 +496,7 @@ export default function HuntPage() {
                 teamId={team.teamId}
                 submissions={submissions[item.id] || []}
                 onSubmitted={handleSubmitted}
+                onRemoved={handleRemoved}
               />
             ))}
           </div>
