@@ -5,10 +5,38 @@ import Layout from '../components/Layout'
 import { supabase } from '../lib/supabase'
 
 function TeamRegistration({ hunt, onRegistered }) {
+  const [mode, setMode] = useState('create')
+  const [existingTeams, setExistingTeams] = useState([])
+  const [loadingTeams, setLoadingTeams] = useState(false)
+
+  // Create team state
   const [teamName, setTeamName] = useState('')
   const [members, setMembers] = useState(['', ''])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (mode !== 'join') return
+    setLoadingTeams(true)
+    supabase
+      .from('teams')
+      .select('id, name, members')
+      .eq('hunt_id', hunt.id)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => {
+        setExistingTeams(data || [])
+        setLoadingTeams(false)
+      })
+  }, [mode, hunt.id])
+
+  function saveAndJoin(team) {
+    localStorage.setItem(`snap-hunt-team-${hunt.id}`, JSON.stringify({
+      teamId: team.id,
+      teamName: team.name,
+      members: team.members,
+    }))
+    onRegistered({ teamId: team.id, teamName: team.name, members: team.members })
+  }
 
   function updateMember(i, val) {
     const next = [...members]
@@ -16,15 +44,7 @@ function TeamRegistration({ hunt, onRegistered }) {
     setMembers(next)
   }
 
-  function addMember() {
-    setMembers([...members, ''])
-  }
-
-  function removeMember(i) {
-    setMembers(members.filter((_, idx) => idx !== i))
-  }
-
-  async function handleSubmit(e) {
+  async function handleCreate(e) {
     e.preventDefault()
     if (!teamName.trim()) return setError('Team name is required.')
     setSaving(true)
@@ -43,21 +63,38 @@ function TeamRegistration({ hunt, onRegistered }) {
       return
     }
 
-    localStorage.setItem(`snap-hunt-team-${hunt.id}`, JSON.stringify({
-      teamId: data.id,
-      teamName: data.name,
-      members: data.members,
-    }))
-    onRegistered({ teamId: data.id, teamName: data.name, members: data.members })
+    saveAndJoin(data)
   }
 
   return (
-    <div>
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-4">
-        <h2 className="text-lg font-bold text-gray-800 mb-1">Join this Hunt</h2>
-        <p className="text-sm text-gray-500 mb-4">Create your team to start submitting photos.</p>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-4">
+      <h2 className="text-lg font-bold text-gray-800 mb-1">Join this Hunt</h2>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="flex gap-2 mt-3 mb-5">
+        <button
+          onClick={() => setMode('create')}
+          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
+            mode === 'create'
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          New Team
+        </button>
+        <button
+          onClick={() => setMode('join')}
+          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
+            mode === 'join'
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          Join Existing
+        </button>
+      </div>
+
+      {mode === 'create' ? (
+        <form onSubmit={handleCreate} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Team Name</label>
             <input
@@ -85,7 +122,7 @@ function TeamRegistration({ hunt, onRegistered }) {
                   {members.length > 1 && (
                     <button
                       type="button"
-                      onClick={() => removeMember(i)}
+                      onClick={() => setMembers(members.filter((_, idx) => idx !== i))}
                       className="text-red-400 hover:text-red-600 text-lg px-2"
                     >
                       &times;
@@ -96,7 +133,7 @@ function TeamRegistration({ hunt, onRegistered }) {
             </div>
             <button
               type="button"
-              onClick={addMember}
+              onClick={() => setMembers([...members, ''])}
               className="mt-2 text-sm text-indigo-600 hover:underline"
             >
               + Add member
@@ -113,18 +150,46 @@ function TeamRegistration({ hunt, onRegistered }) {
             {saving ? 'Registering...' : 'Start Hunt'}
           </button>
         </form>
-      </div>
+      ) : (
+        <div>
+          {loadingTeams ? (
+            <p className="text-center text-gray-400 py-6 text-sm">Loading teams...</p>
+          ) : existingTeams.length === 0 ? (
+            <p className="text-center text-gray-400 py-6 text-sm">No teams yet — create one first.</p>
+          ) : (
+            <div className="space-y-2">
+              {existingTeams.map(team => (
+                <button
+                  key={team.id}
+                  onClick={() => saveAndJoin(team)}
+                  className="w-full text-left bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-300 rounded-lg px-4 py-3 transition-colors"
+                >
+                  <p className="font-semibold text-gray-800">{team.name}</p>
+                  {team.members?.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-0.5">{team.members.join(', ')}</p>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
-function ItemCard({ item, teamId, submission, onSubmitted }) {
+function ItemCard({ item, teamId, submissions, onSubmitted }) {
   const [expanded, setExpanded] = useState(false)
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
+  const [caption, setCaption] = useState('')
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const inputRef = useRef()
+
+  const required = item.photo_count ?? 1
+  const submittedCount = submissions.length
+  const isComplete = submittedCount >= required
 
   function handleFileChange(e) {
     const f = e.target.files[0]
@@ -156,7 +221,7 @@ function ItemCard({ item, teamId, submission, onSubmitted }) {
 
     const { error: insertErr } = await supabase
       .from('submissions')
-      .insert({ item_id: item.id, team_id: teamId, photo_url: publicUrl })
+      .insert({ item_id: item.id, team_id: teamId, photo_url: publicUrl, caption: caption.trim() || null })
 
     if (insertErr) {
       setError('Could not save submission. Please try again.')
@@ -164,10 +229,10 @@ function ItemCard({ item, teamId, submission, onSubmitted }) {
       return
     }
 
-    onSubmitted(item.id, publicUrl)
-    setExpanded(false)
+    onSubmitted(item.id, { url: publicUrl, caption: caption.trim() || null })
     setFile(null)
     setPreview(null)
+    setCaption('')
     setUploading(false)
   }
 
@@ -178,35 +243,58 @@ function ItemCard({ item, teamId, submission, onSubmitted }) {
         className="w-full text-left p-4 flex items-center gap-3"
       >
         <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-          submission ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'
+          isComplete ? 'bg-green-100 text-green-700' :
+          submittedCount > 0 ? 'bg-yellow-100 text-yellow-700' :
+          'bg-gray-100 text-gray-400'
         }`}>
-          {submission ? '✓' : '○'}
+          {isComplete ? '✓' : submittedCount > 0 ? submittedCount : '○'}
         </span>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 truncate">{item.title}</p>
           {item.description && (
             <p className="text-gray-500 text-xs mt-0.5 truncate">{item.description}</p>
           )}
+          <div className="flex gap-2 mt-0.5 flex-wrap">
+            {required > 1 && (
+              <span className="text-xs text-gray-400">{submittedCount}/{required} photos</span>
+            )}
+            {(item.base_points ?? 0) > 0 && (
+              <span className="text-xs text-indigo-500 font-medium">{item.base_points} base pts</span>
+            )}
+          </div>
         </div>
-        {submission && (
-          <span className="text-xs text-green-600 font-medium flex-shrink-0">Submitted</span>
+        {isComplete && (
+          <span className="text-xs text-green-600 font-medium flex-shrink-0">Done</span>
         )}
         <span className="text-gray-400 text-sm">{expanded ? '▲' : '▼'}</span>
       </button>
 
       {expanded && (
-        <div className="border-t border-gray-100 p-4">
-          {submission ? (
-            <div>
-              <img
-                src={submission}
-                alt="Your submission"
-                className="w-full rounded-lg object-cover max-h-64"
-              />
-              <p className="text-xs text-green-600 text-center mt-2 font-medium">Photo submitted!</p>
+        <div className="border-t border-gray-100 p-4 space-y-3">
+          {submissions.length > 0 && (
+            <div className={submissions.length > 1 ? 'grid grid-cols-2 gap-2' : 'space-y-2'}>
+              {submissions.map((sub, i) => (
+                <div key={i}>
+                  <img
+                    src={sub.url}
+                    alt={`Photo ${i + 1}`}
+                    className="w-full rounded-lg object-cover max-h-64"
+                  />
+                  {sub.caption && (
+                    <p className="text-xs text-gray-500 mt-1 px-0.5">{sub.caption}</p>
+                  )}
+                </div>
+              ))}
             </div>
-          ) : (
+          )}
+
+          {!isComplete && (
             <div className="space-y-3">
+              {required > 1 && (
+                <p className="text-xs text-gray-500 font-medium">
+                  Photo {submittedCount + 1} of {required}
+                </p>
+              )}
               {preview && (
                 <img src={preview} alt="Preview" className="w-full rounded-lg object-cover max-h-64" />
               )}
@@ -225,13 +313,23 @@ function ItemCard({ item, teamId, submission, onSubmitted }) {
                 {file ? 'Change photo' : 'Take or select a photo'}
               </button>
               {file && (
-                <button
-                  onClick={handleUpload}
-                  disabled={uploading}
-                  className="w-full bg-indigo-600 text-white font-semibold py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                >
-                  {uploading ? 'Uploading...' : 'Submit Photo'}
-                </button>
+                <>
+                  <input
+                    type="text"
+                    value={caption}
+                    onChange={e => setCaption(e.target.value)}
+                    placeholder="Add a caption (optional)"
+                    maxLength={120}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button
+                    onClick={handleUpload}
+                    disabled={uploading}
+                    className="w-full bg-indigo-600 text-white font-semibold py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                  >
+                    {uploading ? 'Uploading...' : 'Submit Photo'}
+                  </button>
+                </>
               )}
               {error && <p className="text-red-500 text-sm">{error}</p>}
             </div>
@@ -288,12 +386,16 @@ export default function HuntPage() {
     const itemIds = itemList.map(i => i.id)
     const { data } = await supabase
       .from('submissions')
-      .select('item_id, photo_url')
+      .select('item_id, photo_url, caption')
       .eq('team_id', teamId)
       .in('item_id', itemIds)
+      .order('created_at', { ascending: true })
 
     const map = {}
-    for (const s of data || []) map[s.item_id] = s.photo_url
+    for (const s of data || []) {
+      if (!map[s.item_id]) map[s.item_id] = []
+      map[s.item_id].push({ url: s.photo_url, caption: s.caption })
+    }
     setSubmissions(map)
   }
 
@@ -301,11 +403,16 @@ export default function HuntPage() {
     setTeam(teamData)
   }
 
-  function handleSubmitted(itemId, photoUrl) {
-    setSubmissions(prev => ({ ...prev, [itemId]: photoUrl }))
+  function handleSubmitted(itemId, photo) {
+    setSubmissions(prev => ({
+      ...prev,
+      [itemId]: [...(prev[itemId] || []), photo],
+    }))
   }
 
-  const submittedCount = Object.keys(submissions).length
+  const completedCount = items.filter(item =>
+    (submissions[item.id]?.length ?? 0) >= (item.photo_count ?? 1)
+  ).length
 
   if (loading) return <Layout><div className="text-center py-12 text-gray-400">Loading...</div></Layout>
   if (notFound) return <Layout><div className="text-center py-12 text-gray-500">Hunt not found.</div></Layout>
@@ -328,7 +435,7 @@ export default function HuntPage() {
               )}
             </div>
             <span className="text-sm font-medium text-indigo-600">
-              {submittedCount}/{items.length} done
+              {completedCount}/{items.length} done
             </span>
           </div>
 
@@ -357,7 +464,7 @@ export default function HuntPage() {
                 key={item.id}
                 item={item}
                 teamId={team.teamId}
-                submission={submissions[item.id] || null}
+                submissions={submissions[item.id] || []}
                 onSubmitted={handleSubmitted}
               />
             ))}

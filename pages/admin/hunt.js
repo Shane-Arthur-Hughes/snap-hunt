@@ -26,10 +26,14 @@ export default function AdminHunt() {
   const [items, setItems] = useState([])
   const [newTitle, setNewTitle] = useState('')
   const [newDesc, setNewDesc] = useState('')
+  const [newPhotoCount, setNewPhotoCount] = useState(1)
+  const [newBasePoints, setNewBasePoints] = useState(0)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState(null)
   const [editTitle, setEditTitle] = useState('')
   const [editDesc, setEditDesc] = useState('')
+  const [editPhotoCount, setEditPhotoCount] = useState(1)
+  const [editBasePoints, setEditBasePoints] = useState(0)
 
   useEffect(() => {
     if (!ready || !huntId) return
@@ -61,10 +65,14 @@ export default function AdminHunt() {
       hunt_id: huntId,
       title: newTitle.trim(),
       description: newDesc.trim() || null,
+      photo_count: Math.max(1, parseInt(newPhotoCount) || 1),
+      base_points: Math.max(0, parseInt(newBasePoints) || 0),
       sort_order: nextOrder,
     })
     setNewTitle('')
     setNewDesc('')
+    setNewPhotoCount(1)
+    setNewBasePoints(0)
     setAdding(false)
     loadData()
   }
@@ -101,12 +109,16 @@ export default function AdminHunt() {
     setEditing(item.id)
     setEditTitle(item.title)
     setEditDesc(item.description || '')
+    setEditPhotoCount(item.photo_count ?? 1)
+    setEditBasePoints(item.base_points ?? 0)
   }
 
   async function handleSaveEdit(itemId) {
     await supabase.from('items').update({
       title: editTitle.trim(),
       description: editDesc.trim() || null,
+      photo_count: Math.max(1, parseInt(editPhotoCount) || 1),
+      base_points: Math.max(0, parseInt(editBasePoints) || 0),
     }).eq('id', itemId)
     setEditing(null)
     loadData()
@@ -158,6 +170,28 @@ export default function AdminHunt() {
               placeholder="Hint or description (optional)"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Photos required</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={newPhotoCount}
+                  onChange={e => setNewPhotoCount(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Base points</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={newBasePoints}
+                  onChange={e => setNewBasePoints(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
             <button
               type="submit"
               disabled={adding}
@@ -194,6 +228,28 @@ export default function AdminHunt() {
                     placeholder="Hint or description (optional)"
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
+                  <div className="flex gap-3">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Photos required</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={editPhotoCount}
+                        onChange={e => setEditPhotoCount(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Base points</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editBasePoints}
+                        onChange={e => setEditBasePoints(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleSaveEdit(item.id)}
@@ -232,9 +288,17 @@ export default function AdminHunt() {
                     {item.description && (
                       <p className="text-gray-500 text-sm">{item.description}</p>
                     )}
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {item.submissions?.[0]?.count ?? 0} submissions
-                    </p>
+                    <div className="flex gap-3 mt-0.5">
+                      <p className="text-xs text-gray-400">
+                        {item.submissions?.[0]?.count ?? 0} submissions
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {item.photo_count ?? 1} photo{(item.photo_count ?? 1) !== 1 ? 's' : ''}
+                      </p>
+                      <p className="text-xs text-indigo-500 font-medium">
+                        {item.base_points ?? 0} base pts
+                      </p>
+                    </div>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
                     <button

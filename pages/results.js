@@ -30,23 +30,69 @@ export default function ResultsPage() {
         .order('sort_order', { ascending: true })
       setItems(itemsData || [])
 
-      const { data: allSubs } = await supabase
-        .from('submissions')
-        .select('id, photo_url, item_id, team_id, teams(id, name), votes(id)')
-        .in('item_id', (itemsData || []).map(i => i.id))
+      const itemIds = (itemsData || []).map(i => i.id)
 
-      const byItem = {}
+      const [{ data: allSubs }, { data: allVotes }] = await Promise.all([
+        supabase
+          .from('submissions')
+          .select('id, photo_url, caption, item_id, team_id, teams(id, name)')
+          .in('item_id', itemIds)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('votes')
+          .select('item_id, team_id')
+          .in('item_id', itemIds),
+      ])
+
+      // Vote counts per (item_id, team_id)
+      const voteCountMap = {}
+      for (const v of allVotes || []) {
+        const key = `${v.item_id}_${v.team_id}`
+        voteCountMap[key] = (voteCountMap[key] || 0) + 1
+      }
+
+      // Group submissions by item, then by team
+      const byItemTeam = {}
       const teamScores = {}
 
       for (const sub of allSubs || []) {
-        const count = sub.votes?.length ?? 0
-        if (!byItem[sub.item_id]) byItem[sub.item_id] = []
-        byItem[sub.item_id].push({ ...sub, voteCount: count })
-
         const tid = sub.teams?.id
         if (!tid) continue
+        const key = `${sub.item_id}_${tid}`
+        if (!byItemTeam[key]) {
+          byItemTeam[key] = {
+            itemId: sub.item_id,
+            teamId: tid,
+            teamName: sub.teams.name,
+            photos: [],
+            voteCount: voteCountMap[key] || 0,
+          }
+        }
+        byItemTeam[key].photos.push({ url: sub.photo_url, caption: sub.caption })
         if (!teamScores[tid]) teamScores[tid] = { name: sub.teams.name, total: 0 }
-        teamScores[tid].total += count
+      }
+
+      // Add vote scores
+      for (const entry of Object.values(byItemTeam)) {
+        teamScores[entry.teamId].total += entry.voteCount
+      }
+
+      // Group by item for display
+      const byItem = {}
+      for (const entry of Object.values(byItemTeam)) {
+        if (!byItem[entry.itemId]) byItem[entry.itemId] = []
+        byItem[entry.itemId].push(entry)
+      }
+
+      // Award base_points to teams that submitted all required photos for an item
+      for (const item of itemsData || []) {
+        if (!(item.base_points > 0)) continue
+        const required = item.photo_count ?? 1
+        for (const entry of byItem[item.id] || []) {
+          if (entry.photos.length >= required && teamScores[entry.teamId]) {
+            teamScores[entry.teamId].total += item.base_points
+          }
+        }
       }
 
       for (const id in byItem) {
@@ -111,28 +157,53 @@ export default function ResultsPage() {
             const subs = itemResults[item.id] || []
             return (
               <div key={item.id}>
-                <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
-                  {item.title}
-                </h3>
+                <div className="flex items-baseline gap-2 mb-2">
+                  <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide">
+                    {item.title}
+                  </h3>
+                  {(item.base_points ?? 0) > 0 && (
+                    <span className="text-xs text-indigo-500 font-medium">
+                      +{item.base_points} base pts
+                    </span>
+                  )}
+                  {(item.photo_count ?? 1) > 1 && (
+                    <span className="text-xs text-gray-400">
+                      {item.photo_count} photos required
+                    </span>
+                  )}
+                </div>
                 {subs.length === 0 ? (
                   <p className="text-gray-400 text-sm">No submissions.</p>
                 ) : (
                   <div className="grid grid-cols-2 gap-3">
-                    {subs.map((sub, i) => (
+                    {subs.map((entry, i) => (
                       <div
-                        key={sub.id}
+                        key={`${entry.itemId}_${entry.teamId}`}
                         className={`relative rounded-xl overflow-hidden border-2 ${
                           i === 0 ? 'border-yellow-400' : 'border-gray-100'
                         }`}
                       >
-                        <img
-                          src={sub.photo_url}
-                          alt={sub.teams?.name}
-                          className="w-full h-32 object-cover"
-                        />
+                        {entry.photos.length === 1 ? (
+                          <img
+                            src={entry.photos[0].url}
+                            alt={entry.teamName}
+                            className="w-full h-32 object-cover"
+                          />
+                        ) : (
+                          <div className="grid grid-cols-2 gap-0.5 h-32">
+                            {entry.photos.map((photo, j) => (
+                              <img
+                                key={j}
+                                src={photo.url}
+                                alt={`${entry.teamName} ${j + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                            ))}
+                          </div>
+                        )}
                         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
-                          <p className="text-white text-xs font-semibold truncate">{sub.teams?.name}</p>
-                          <p className="text-white/80 text-xs">{sub.voteCount} votes</p>
+                          <p className="text-white text-xs font-semibold truncate">{entry.teamName}</p>
+                          <p className="text-white/80 text-xs">{entry.voteCount} {entry.voteCount === 1 ? 'vote' : 'votes'}</p>
                         </div>
                         {i === 0 && (
                           <div className="absolute top-2 left-2 bg-yellow-400 text-yellow-900 text-xs font-bold px-1.5 py-0.5 rounded">
