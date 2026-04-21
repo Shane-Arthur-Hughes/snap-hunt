@@ -268,7 +268,7 @@ function ItemCard({ item, teamId, submissions, onSubmitted, onRemoved }) {
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 truncate">{item.title}</p>
           {item.description && (
-            <p className="text-gray-500 text-xs mt-0.5 truncate">{item.description}</p>
+            <p className="text-gray-500 text-xs mt-0.5 line-clamp-2">{item.description}</p>
           )}
           <div className="flex gap-2 mt-0.5 flex-wrap">
             {required > 1 && (
