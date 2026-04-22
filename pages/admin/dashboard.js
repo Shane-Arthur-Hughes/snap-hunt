@@ -37,6 +37,7 @@ export default function AdminDashboard() {
   const [iconPreview, setIconPreview] = useState(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(null)
+  const [duplicating, setDuplicating] = useState(null)
   const [editingIcon, setEditingIcon] = useState(null)
   const [editIconFile, setEditIconFile] = useState(null)
   const [editIconPreview, setEditIconPreview] = useState(null)
@@ -100,6 +101,38 @@ export default function AdminDashboard() {
     setEditIconFile(null)
     setEditIconPreview(null)
     setUploadingIcon(false)
+  }
+
+  async function handleDuplicate(hunt) {
+    setDuplicating(hunt.id)
+
+    const { data: newHunt } = await supabase
+      .from('hunts')
+      .insert({
+        name: `${hunt.name} (Copy)`,
+        description: hunt.description,
+        icon_url: hunt.icon_url,
+        is_active: false,
+      })
+      .select()
+      .single()
+
+    if (newHunt) {
+      const { data: items } = await supabase
+        .from('items')
+        .select('title, description, photo_count, base_points, sort_order')
+        .eq('hunt_id', hunt.id)
+        .order('sort_order', { ascending: true })
+
+      if (items?.length) {
+        await supabase.from('items').insert(
+          items.map(item => ({ ...item, hunt_id: newHunt.id }))
+        )
+      }
+    }
+
+    setDuplicating(null)
+    loadHunts()
   }
 
   async function handleToggleActive(hunt) {
@@ -312,6 +345,13 @@ export default function AdminDashboard() {
                   className="text-xs bg-gray-50 text-gray-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                   {hunt.is_active ? 'Deactivate' : 'Activate'}
+                </button>
+                <button
+                  onClick={() => handleDuplicate(hunt)}
+                  disabled={duplicating === hunt.id}
+                  className="text-xs bg-gray-50 text-gray-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
+                >
+                  {duplicating === hunt.id ? 'Copying...' : 'Duplicate'}
                 </button>
                 <button
                   onClick={() => handleDelete(hunt.id)}

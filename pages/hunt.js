@@ -268,14 +268,14 @@ function ItemCard({ item, teamId, submissions, onSubmitted, onRemoved }) {
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 truncate">{item.title}</p>
           {item.description && (
-            <p className="text-gray-500 text-xs mt-0.5 line-clamp-2">{item.description}</p>
+            <p className={`text-gray-500 text-xs mt-0.5 ${expanded ? '' : 'line-clamp-2'}`}>{item.description}</p>
           )}
           <div className="flex gap-2 mt-0.5 flex-wrap">
             {required > 1 && (
               <span className="text-xs text-gray-400">{submittedCount}/{required} photos</span>
             )}
             {(item.base_points ?? 0) > 0 && (
-              <span className="text-xs text-indigo-500 font-medium">{item.base_points} base pts</span>
+              <span className="text-xs text-indigo-500 font-medium">{item.base_points} completion pts</span>
             )}
           </div>
         </div>

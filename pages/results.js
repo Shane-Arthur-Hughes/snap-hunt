@@ -163,7 +163,7 @@ export default function ResultsPage() {
                   </h3>
                   {(item.base_points ?? 0) > 0 && (
                     <span className="text-xs text-indigo-500 font-medium">
-                      +{item.base_points} base pts
+                      +{item.base_points} completion pts
                     </span>
                   )}
                   {(item.photo_count ?? 1) > 1 && (

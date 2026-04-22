@@ -24,6 +24,8 @@ export default function AdminHunt() {
 
   const [hunt, setHunt] = useState(null)
   const [items, setItems] = useState([])
+  const [teams, setTeams] = useState([])
+  const [deletingTeam, setDeletingTeam] = useState(null)
   const [newTitle, setNewTitle] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [newPhotoCount, setNewPhotoCount] = useState(1)
@@ -54,6 +56,21 @@ export default function AdminHunt() {
       .eq('hunt_id', huntId)
       .order('sort_order', { ascending: true })
     setItems(itemsData || [])
+
+    const { data: teamsData } = await supabase
+      .from('teams')
+      .select('*')
+      .eq('hunt_id', huntId)
+      .order('created_at', { ascending: true })
+    setTeams(teamsData || [])
+  }
+
+  async function handleDeleteTeam(teamId) {
+    if (!confirm('Remove this team and all their submissions?')) return
+    setDeletingTeam(teamId)
+    await supabase.from('teams').delete().eq('id', teamId)
+    setDeletingTeam(null)
+    loadData()
   }
 
   async function handleAdd(e) {
@@ -182,7 +199,7 @@ export default function AdminHunt() {
                 />
               </div>
               <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Base points</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Completion points</label>
                 <input
                   type="number"
                   min="0"
@@ -240,7 +257,7 @@ export default function AdminHunt() {
                       />
                     </div>
                     <div className="flex-1">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Base points</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Completion points</label>
                       <input
                         type="number"
                         min="0"
@@ -296,7 +313,7 @@ export default function AdminHunt() {
                         {item.photo_count ?? 1} photo{(item.photo_count ?? 1) !== 1 ? 's' : ''}
                       </p>
                       <p className="text-xs text-indigo-500 font-medium">
-                        {item.base_points ?? 0} base pts
+                        {item.base_points ?? 0} completion pts
                       </p>
                     </div>
                   </div>
@@ -319,6 +336,33 @@ export default function AdminHunt() {
             </div>
           ))}
         </div>
+        <h2 className="font-semibold text-gray-800 mb-3 mt-8">
+          Teams ({teams.length})
+        </h2>
+
+        {teams.length === 0 ? (
+          <div className="text-center text-gray-400 py-6">No teams have joined yet.</div>
+        ) : (
+          <div className="space-y-2">
+            {teams.map(team => (
+              <div key={team.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-900">{team.name}</p>
+                  {team.members?.length > 0 && (
+                    <p className="text-sm text-gray-500 mt-0.5">{team.members.join(', ')}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleDeleteTeam(team.id)}
+                  disabled={deletingTeam === team.id}
+                  className="text-xs text-red-500 hover:underline font-medium flex-shrink-0 disabled:opacity-50"
+                >
+                  {deletingTeam === team.id ? 'Removing...' : 'Remove'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </main>
     </div>
   )
