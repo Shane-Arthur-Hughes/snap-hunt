@@ -30,12 +30,19 @@ export default function AdminDashboard() {
   const router = useRouter()
   const ready = useAdminGuard(router)
   const [hunts, setHunts] = useState([])
+
+  // Create form state
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [iconFile, setIconFile] = useState(null)
   const [iconPreview, setIconPreview] = useState(null)
   const [saving, setSaving] = useState(false)
+
+  // Per-hunt timer input: { [huntId]: minutesString }
+  const [timerMinutes, setTimerMinutes] = useState({})
+  const [startingTimer, setStartingTimer] = useState(null)
+
   const [deleting, setDeleting] = useState(null)
   const [duplicating, setDuplicating] = useState(null)
   const [editingIcon, setEditingIcon] = useState(null)
@@ -86,6 +93,23 @@ export default function AdminDashboard() {
     setIconPreview(null)
     setShowForm(false)
     setSaving(false)
+    loadHunts()
+  }
+
+  // Sets end_time to now + entered minutes, starting the countdown for all users
+  async function handleStartTimer(hunt) {
+    const mins = parseInt(timerMinutes[hunt.id] || 0)
+    if (!mins || mins <= 0) return
+    setStartingTimer(hunt.id)
+    const endTime = new Date(Date.now() + mins * 60 * 1000).toISOString()
+    await supabase.from('hunts').update({ end_time: endTime }).eq('id', hunt.id)
+    setStartingTimer(null)
+    loadHunts()
+  }
+
+  // Clears end_time, stopping the countdown
+  async function handleStopTimer(hunt) {
+    await supabase.from('hunts').update({ end_time: null }).eq('id', hunt.id)
     loadHunts()
   }
 
@@ -249,120 +273,166 @@ export default function AdminDashboard() {
         )}
 
         <div className="space-y-3">
-          {hunts.map(hunt => (
-            <div key={hunt.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0">
-                  {editingIcon === hunt.id ? (
-                    <div className="space-y-1">
-                      <input
-                        ref={editIconRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={e => handleIconChange(e, setEditIconFile, setEditIconPreview)}
-                        className="hidden"
-                      />
-                      <div
-                        onClick={() => editIconRef.current.click()}
-                        className="w-14 h-14 rounded-xl overflow-hidden cursor-pointer border-2 border-dashed border-indigo-400 flex items-center justify-center bg-indigo-50"
-                      >
-                        {editIconPreview
-                          ? <img src={editIconPreview} className="w-full h-full object-cover" />
-                          : <span className="text-indigo-400 text-xl">+</span>
+          {hunts.map(hunt => {
+            const timerActive = hunt.end_time && new Date(hunt.end_time) > new Date()
+            const timerExpired = hunt.end_time && new Date(hunt.end_time) <= new Date()
+
+            return (
+              <div key={hunt.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-start gap-3">
+                  {/* Hunt icon */}
+                  <div className="flex-shrink-0">
+                    {editingIcon === hunt.id ? (
+                      <div className="space-y-1">
+                        <input
+                          ref={editIconRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={e => handleIconChange(e, setEditIconFile, setEditIconPreview)}
+                          className="hidden"
+                        />
+                        <div
+                          onClick={() => editIconRef.current.click()}
+                          className="w-14 h-14 rounded-xl overflow-hidden cursor-pointer border-2 border-dashed border-indigo-400 flex items-center justify-center bg-indigo-50"
+                        >
+                          {editIconPreview
+                            ? <img src={editIconPreview} className="w-full h-full object-cover" />
+                            : <span className="text-indigo-400 text-xl">+</span>
+                          }
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => handleSaveIcon(hunt)}
+                            disabled={!editIconFile || uploadingIcon}
+                            className="text-xs text-indigo-600 font-semibold hover:underline disabled:opacity-40"
+                          >
+                            {uploadingIcon ? '...' : 'Save'}
+                          </button>
+                          <span className="text-gray-300 text-xs">·</span>
+                          <button
+                            onClick={() => { setEditingIcon(null); setEditIconFile(null); setEditIconPreview(null) }}
+                            className="text-xs text-gray-400 hover:underline"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => setEditingIcon(hunt.id)} className="group relative w-14 h-14 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0">
+                        {hunt.icon_url
+                          ? <img src={hunt.icon_url} className="w-full h-full object-cover" />
+                          : <span className="text-gray-300 text-2xl">📷</span>
                         }
-                      </div>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => handleSaveIcon(hunt)}
-                          disabled={!editIconFile || uploadingIcon}
-                          className="text-xs text-indigo-600 font-semibold hover:underline disabled:opacity-40"
-                        >
-                          {uploadingIcon ? '...' : 'Save'}
-                        </button>
-                        <span className="text-gray-300 text-xs">·</span>
-                        <button
-                          onClick={() => { setEditingIcon(null); setEditIconFile(null); setEditIconPreview(null) }}
-                          className="text-xs text-gray-400 hover:underline"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button onClick={() => setEditingIcon(hunt.id)} className="group relative w-14 h-14 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0">
-                      {hunt.icon_url
-                        ? <img src={hunt.icon_url} className="w-full h-full object-cover" />
-                        : <span className="text-gray-300 text-2xl">📷</span>
-                      }
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <span className="text-white text-xs font-semibold">Edit</span>
-                      </div>
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h2 className="font-semibold text-gray-900 truncate">{hunt.name}</h2>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
-                      hunt.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                    }`}>
-                      {hunt.is_active ? 'Active' : 'Inactive'}
-                    </span>
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <span className="text-white text-xs font-semibold">Edit</span>
+                        </div>
+                      </button>
+                    )}
                   </div>
-                  {hunt.description && (
-                    <p className="text-gray-500 text-sm mt-0.5 truncate">{hunt.description}</p>
-                  )}
-                  <p className="text-xs text-gray-400 mt-1">
-                    {hunt.items?.[0]?.count ?? 0} items &bull; {hunt.teams?.[0]?.count ?? 0} teams
-                  </p>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-semibold text-gray-900 truncate">{hunt.name}</h2>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                        hunt.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {hunt.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                    {hunt.description && (
+                      <p className="text-gray-500 text-sm mt-0.5 truncate">{hunt.description}</p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-1">
+                      {hunt.items?.[0]?.count ?? 0} items &bull; {hunt.teams?.[0]?.count ?? 0} teams
+                    </p>
+
+                    {/* Timer controls */}
+                    <div className="mt-2">
+                      {timerActive ? (
+                        // Timer is running — show a stop button
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-green-600 font-medium">
+                            Timer running · ends {new Date(hunt.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <button
+                            onClick={() => handleStopTimer(hunt)}
+                            className="text-xs text-red-500 hover:underline font-medium"
+                          >
+                            Stop
+                          </button>
+                        </div>
+                      ) : (
+                        // Timer not running — show minutes input + Start button
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder="mins"
+                            value={timerMinutes[hunt.id] || ''}
+                            onChange={e => setTimerMinutes(prev => ({ ...prev, [hunt.id]: e.target.value }))}
+                            className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                          <button
+                            onClick={() => handleStartTimer(hunt)}
+                            disabled={!timerMinutes[hunt.id] || startingTimer === hunt.id}
+                            className="text-xs bg-indigo-600 text-white font-semibold px-3 py-1 rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition-colors"
+                          >
+                            {startingTimer === hunt.id ? '...' : 'Start Timer'}
+                          </button>
+                          {timerExpired && (
+                            <span className="text-xs text-red-500 font-medium">Ended</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 mt-3 flex-wrap">
+                  <Link
+                    href={`/admin/hunt?id=${hunt.id}`}
+                    className="text-xs bg-indigo-50 text-indigo-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
+                  >
+                    Manage Items
+                  </Link>
+                  <Link
+                    href={`/hunt?id=${hunt.id}`}
+                    target="_blank"
+                    className="text-xs bg-gray-50 text-gray-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    View Hunt
+                  </Link>
+                  <Link
+                    href={`/results?hunt=${hunt.id}`}
+                    target="_blank"
+                    className="text-xs bg-gray-50 text-gray-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    Results
+                  </Link>
+                  <button
+                    onClick={() => handleToggleActive(hunt)}
+                    className="text-xs bg-gray-50 text-gray-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    {hunt.is_active ? 'Deactivate' : 'Activate'}
+                  </button>
+                  <button
+                    onClick={() => handleDuplicate(hunt)}
+                    disabled={duplicating === hunt.id}
+                    className="text-xs bg-gray-50 text-gray-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
+                  >
+                    {duplicating === hunt.id ? 'Copying...' : 'Duplicate'}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(hunt.id)}
+                    disabled={deleting === hunt.id}
+                    className="text-xs bg-red-50 text-red-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
+                  >
+                    {deleting === hunt.id ? 'Deleting...' : 'Delete'}
+                  </button>
                 </div>
               </div>
-
-              <div className="flex gap-2 mt-3 flex-wrap">
-                <Link
-                  href={`/admin/hunt?id=${hunt.id}`}
-                  className="text-xs bg-indigo-50 text-indigo-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
-                >
-                  Manage Items
-                </Link>
-                <Link
-                  href={`/hunt?id=${hunt.id}`}
-                  target="_blank"
-                  className="text-xs bg-gray-50 text-gray-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  View Hunt
-                </Link>
-                <Link
-                  href={`/results?hunt=${hunt.id}`}
-                  target="_blank"
-                  className="text-xs bg-gray-50 text-gray-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  Results
-                </Link>
-                <button
-                  onClick={() => handleToggleActive(hunt)}
-                  className="text-xs bg-gray-50 text-gray-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  {hunt.is_active ? 'Deactivate' : 'Activate'}
-                </button>
-                <button
-                  onClick={() => handleDuplicate(hunt)}
-                  disabled={duplicating === hunt.id}
-                  className="text-xs bg-gray-50 text-gray-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
-                >
-                  {duplicating === hunt.id ? 'Copying...' : 'Duplicate'}
-                </button>
-                <button
-                  onClick={() => handleDelete(hunt.id)}
-                  disabled={deleting === hunt.id}
-                  className="text-xs bg-red-50 text-red-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
-                >
-                  {deleting === hunt.id ? 'Deleting...' : 'Delete'}
-                </button>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </main>
     </div>
