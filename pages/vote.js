@@ -59,10 +59,11 @@ export default function VotePage() {
     init()
   }, [huntId])
 
-  // Whenever the selected item tab changes (or userId becomes available),
-  // reload the submissions and votes for that item
+  // Load submissions whenever the selected item changes.
+  // userId is passed along so we can mark which teams the user has already voted for,
+  // but we don't wait for it — photos should be visible even if anon sign-in is slow.
   useEffect(() => {
-    if (!selectedItem || !userId) return
+    if (!selectedItem) return
     loadTeams(selectedItem, userId)
   }, [selectedItem, userId])
 
@@ -91,13 +92,15 @@ export default function VotePage() {
     if (grouped.length > 0) {
       const teamIds = grouped.map(t => t.teamId)
 
-      // Run both vote queries in parallel using Promise.all — faster than running them sequentially
-      const [{ data: voteCounts }, { data: myVoteData }] = await Promise.all([
-        // All votes for this item (to display total counts)
+      // Always fetch total vote counts so photo cards show correct tallies.
+      // Only fetch the user's own votes if we have a userId — skip that query if not.
+      const queries = [
         supabase.from('votes').select('team_id').eq('item_id', itemId).in('team_id', teamIds),
-        // Just this user's votes (to know which Vote buttons to disable)
-        supabase.from('votes').select('team_id').eq('item_id', itemId).eq('anon_user_id', uid).in('team_id', teamIds),
-      ])
+        uid
+          ? supabase.from('votes').select('team_id').eq('item_id', itemId).eq('anon_user_id', uid).in('team_id', teamIds)
+          : Promise.resolve({ data: [] }),
+      ]
+      const [{ data: voteCounts }, { data: myVoteData }] = await Promise.all(queries)
 
       // Count votes per team: { teamId: count }
       const countMap = {}
