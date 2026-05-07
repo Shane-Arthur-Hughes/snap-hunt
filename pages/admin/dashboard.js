@@ -375,51 +375,13 @@ export default function AdminDashboard() {
                       {hunt.items?.[0]?.count ?? 0} items &bull; {hunt.teams?.[0]?.count ?? 0} teams
                     </p>
 
-                    {/* Gate question */}
-                    <div className="mt-2">
-                      {editingGate === hunt.id ? (
-                        <div className="space-y-1.5">
-                          <input
-                            type="text"
-                            value={editGateQuestion}
-                            onChange={e => setEditGateQuestion(e.target.value)}
-                            placeholder="Gate question (e.g. What is the secret word?)"
-                            className="w-full border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                          <input
-                            type="text"
-                            value={editGateAnswer}
-                            onChange={e => setEditGateAnswer(e.target.value)}
-                            placeholder="Correct answer"
-                            className="w-full border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleSaveGate(hunt)}
-                              disabled={!editGateQuestion.trim() || !editGateAnswer.trim() || savingGate}
-                              className="text-xs text-indigo-600 font-semibold hover:underline disabled:opacity-40"
-                            >
-                              {savingGate ? '...' : 'Save'}
-                            </button>
-                            <span className="text-gray-300 text-xs">·</span>
-                            <button onClick={() => setEditingGate(null)} className="text-xs text-gray-400 hover:underline">
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : hunt.gate_question ? (
-                        <div className="flex items-start gap-2">
-                          <span className="text-xs text-purple-700 bg-purple-50 rounded px-1.5 py-0.5 font-medium flex-shrink-0">Gate</span>
-                          <span className="text-xs text-gray-500 truncate flex-1">{hunt.gate_question}</span>
-                          <button onClick={() => openGateEdit(hunt)} className="text-xs text-gray-400 hover:underline flex-shrink-0">Edit</button>
-                          <button onClick={() => handleClearGate(hunt)} className="text-xs text-red-400 hover:underline flex-shrink-0">Remove</button>
-                        </div>
-                      ) : (
-                        <button onClick={() => openGateEdit(hunt)} className="text-xs text-gray-400 hover:text-indigo-500 hover:underline">
-                          + Add gate question
-                        </button>
-                      )}
-                    </div>
+                    {/* Active gate question summary — shown when set and not editing */}
+                    {hunt.gate_question && editingGate !== hunt.id && (
+                      <div className="mt-2 flex items-center gap-1.5">
+                        <span className="text-xs text-purple-700 bg-purple-50 rounded px-1.5 py-0.5 font-medium flex-shrink-0">Gate</span>
+                        <span className="text-xs text-gray-500 truncate">{hunt.gate_question}</span>
+                      </div>
+                    )}
 
                     {/* Timer controls */}
                     <div className="mt-2">
@@ -498,6 +460,16 @@ export default function AdminDashboard() {
                     {duplicating === hunt.id ? 'Copying...' : 'Duplicate'}
                   </button>
                   <button
+                    onClick={() => openGateEdit(hunt)}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+                      hunt.gate_question
+                        ? 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {hunt.gate_question ? 'Edit Gate' : 'Gate Question'}
+                  </button>
+                  <button
                     onClick={() => handleDelete(hunt.id)}
                     disabled={deleting === hunt.id}
                     className="text-xs bg-red-50 text-red-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
@@ -505,6 +477,47 @@ export default function AdminDashboard() {
                     {deleting === hunt.id ? 'Deleting...' : 'Delete'}
                   </button>
                 </div>
+
+                {/* Gate question edit panel — expands below the action buttons when editing */}
+                {editingGate === hunt.id && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                    <p className="text-xs font-semibold text-gray-600">Gate Question</p>
+                    <input
+                      type="text"
+                      value={editGateQuestion}
+                      onChange={e => setEditGateQuestion(e.target.value)}
+                      placeholder="Question participants must answer (e.g. What is the secret word?)"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <input
+                      type="text"
+                      value={editGateAnswer}
+                      onChange={e => setEditGateAnswer(e.target.value)}
+                      placeholder="Correct answer"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <div className="flex gap-3 items-center">
+                      <button
+                        onClick={() => handleSaveGate(hunt)}
+                        disabled={!editGateQuestion.trim() || !editGateAnswer.trim() || savingGate}
+                        className="bg-indigo-600 text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition-colors"
+                      >
+                        {savingGate ? 'Saving...' : 'Save'}
+                      </button>
+                      <button onClick={() => setEditingGate(null)} className="text-xs text-gray-400 hover:underline">
+                        Cancel
+                      </button>
+                      {hunt.gate_question && (
+                        <button
+                          onClick={() => { handleClearGate(hunt); setEditingGate(null) }}
+                          className="text-xs text-red-400 hover:underline ml-auto"
+                        >
+                          Remove gate
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })}
