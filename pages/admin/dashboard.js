@@ -43,6 +43,12 @@ export default function AdminDashboard() {
   const [timerMinutes, setTimerMinutes] = useState({})
   const [startingTimer, setStartingTimer] = useState(null)
 
+  // Gate question editing state: which hunt is being edited, and the field values
+  const [editingGate, setEditingGate] = useState(null)
+  const [editGateQuestion, setEditGateQuestion] = useState('')
+  const [editGateAnswer, setEditGateAnswer] = useState('')
+  const [savingGate, setSavingGate] = useState(false)
+
   const [deleting, setDeleting] = useState(null)
   const [duplicating, setDuplicating] = useState(null)
   const [editingIcon, setEditingIcon] = useState(null)
@@ -110,6 +116,29 @@ export default function AdminDashboard() {
   // Clears end_time, stopping the countdown
   async function handleStopTimer(hunt) {
     await supabase.from('hunts').update({ end_time: null }).eq('id', hunt.id)
+    loadHunts()
+  }
+
+  function openGateEdit(hunt) {
+    setEditingGate(hunt.id)
+    setEditGateQuestion(hunt.gate_question || '')
+    setEditGateAnswer(hunt.gate_answer || '')
+  }
+
+  async function handleSaveGate(hunt) {
+    if (!editGateQuestion.trim()) return
+    setSavingGate(true)
+    await supabase.from('hunts').update({
+      gate_question: editGateQuestion.trim(),
+      gate_answer: editGateAnswer.trim(),
+    }).eq('id', hunt.id)
+    setSavingGate(false)
+    setEditingGate(null)
+    loadHunts()
+  }
+
+  async function handleClearGate(hunt) {
+    await supabase.from('hunts').update({ gate_question: null, gate_answer: null }).eq('id', hunt.id)
     loadHunts()
   }
 
@@ -345,6 +374,52 @@ export default function AdminDashboard() {
                     <p className="text-xs text-gray-400 mt-1">
                       {hunt.items?.[0]?.count ?? 0} items &bull; {hunt.teams?.[0]?.count ?? 0} teams
                     </p>
+
+                    {/* Gate question */}
+                    <div className="mt-2">
+                      {editingGate === hunt.id ? (
+                        <div className="space-y-1.5">
+                          <input
+                            type="text"
+                            value={editGateQuestion}
+                            onChange={e => setEditGateQuestion(e.target.value)}
+                            placeholder="Gate question (e.g. What is the secret word?)"
+                            className="w-full border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                          <input
+                            type="text"
+                            value={editGateAnswer}
+                            onChange={e => setEditGateAnswer(e.target.value)}
+                            placeholder="Correct answer"
+                            className="w-full border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleSaveGate(hunt)}
+                              disabled={!editGateQuestion.trim() || !editGateAnswer.trim() || savingGate}
+                              className="text-xs text-indigo-600 font-semibold hover:underline disabled:opacity-40"
+                            >
+                              {savingGate ? '...' : 'Save'}
+                            </button>
+                            <span className="text-gray-300 text-xs">·</span>
+                            <button onClick={() => setEditingGate(null)} className="text-xs text-gray-400 hover:underline">
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : hunt.gate_question ? (
+                        <div className="flex items-start gap-2">
+                          <span className="text-xs text-purple-700 bg-purple-50 rounded px-1.5 py-0.5 font-medium flex-shrink-0">Gate</span>
+                          <span className="text-xs text-gray-500 truncate flex-1">{hunt.gate_question}</span>
+                          <button onClick={() => openGateEdit(hunt)} className="text-xs text-gray-400 hover:underline flex-shrink-0">Edit</button>
+                          <button onClick={() => handleClearGate(hunt)} className="text-xs text-red-400 hover:underline flex-shrink-0">Remove</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => openGateEdit(hunt)} className="text-xs text-gray-400 hover:text-indigo-500 hover:underline">
+                          + Add gate question
+                        </button>
+                      )}
+                    </div>
 
                     {/* Timer controls */}
                     <div className="mt-2">

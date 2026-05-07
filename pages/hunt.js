@@ -7,6 +7,60 @@ import HuntTimer from '../components/HuntTimer'
 import { supabase } from '../lib/supabase'
 
 // ─────────────────────────────────────────────
+// GateQuestion component
+// Shown before team registration if the hunt has a gate_question set.
+// The participant must type the correct answer to proceed.
+// Props:
+//   hunt   — the hunt object (has gate_question and gate_answer)
+//   onPass — called when the correct answer is submitted
+// ─────────────────────────────────────────────
+function GateQuestion({ hunt, onPass }) {
+  const [answer, setAnswer] = useState('')
+  const [error, setError] = useState(false)
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    // Case-insensitive, whitespace-trimmed comparison
+    if (answer.trim().toLowerCase() === hunt.gate_answer?.trim().toLowerCase()) {
+      localStorage.setItem(`snap-hunt-gate-${hunt.id}`, 'passed')
+      onPass()
+    } else {
+      setError(true)
+    }
+  }
+
+  return (
+    <Layout backHref="/" backLabel="All Hunts" title={hunt.name}>
+      <HuntTimer endTime={hunt.end_time} />
+      {hunt.description && (
+        <p className="text-gray-500 text-sm mb-4">{hunt.description}</p>
+      )}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 className="text-base font-bold text-gray-800 mb-1">Answer to proceed</h2>
+        <p className="text-gray-700 mb-4">{hunt.gate_question}</p>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input
+            type="text"
+            value={answer}
+            onChange={e => { setAnswer(e.target.value); setError(false) }}
+            placeholder="Your answer..."
+            autoFocus
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          {error && <p className="text-red-500 text-sm">Incorrect answer, try again.</p>}
+          <button
+            type="submit"
+            className="w-full bg-indigo-600 text-white font-semibold py-2.5 rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            Submit
+          </button>
+        </form>
+      </div>
+    </Layout>
+  )
+}
+
+// ─────────────────────────────────────────────
 // TeamRegistration component
 // Shown before the user has joined a team.
 // Props:
@@ -450,6 +504,8 @@ export default function HuntPage() {
   const [submissions, setSubmissions] = useState({})
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  // null = not yet determined; true = gate passed (or no gate); false = needs to answer
+  const [gatePassed, setGatePassed] = useState(null)
 
   // Load hunt data when the huntId becomes available.
   // huntId starts as undefined on first render (Next.js hydration),
@@ -466,6 +522,15 @@ export default function HuntPage() {
 
       if (!huntData) { setNotFound(true); setLoading(false); return }
       setHunt(huntData)
+
+      // Check if this hunt has a gate question and whether this browser has already passed it.
+      // If no gate_question is set, treat it as automatically passed.
+      if (huntData.gate_question) {
+        const passed = localStorage.getItem(`snap-hunt-gate-${huntId}`) === 'passed'
+        setGatePassed(passed)
+      } else {
+        setGatePassed(true)
+      }
 
       // Fetch all items for this hunt, ordered by sort_order
       const { data: itemsData } = await supabase
@@ -541,6 +606,11 @@ export default function HuntPage() {
   // Early returns: show a loading or error state before the main render
   if (loading) return <Layout><div className="text-center py-12 text-gray-400">Loading...</div></Layout>
   if (notFound) return <Layout><div className="text-center py-12 text-gray-500">Hunt not found.</div></Layout>
+
+  // If the hunt has a gate question and the user hasn't answered it yet, show that screen.
+  if (gatePassed === false) {
+    return <GateQuestion hunt={hunt} onPass={() => setGatePassed(true)} />
+  }
 
   return (
     <Layout backHref="/" backLabel="All Hunts" title={hunt.name}>

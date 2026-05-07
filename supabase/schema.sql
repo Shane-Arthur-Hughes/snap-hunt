@@ -8,6 +8,10 @@ create table if not exists hunts (
   name text not null,
   description text,
   is_active boolean default true,
+  icon_url text,
+  end_time timestamptz,
+  gate_question text,
+  gate_answer text,
   created_at timestamptz default now()
 );
 
